@@ -1,0 +1,23 @@
+# Environment / secrets
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Generated data (rebuilt by ingest.py)
+data/chroma/
+data/chunks.jsonl
+
+# Claude Code local config
+.claude/
+
+# macOS
+.DS_Store

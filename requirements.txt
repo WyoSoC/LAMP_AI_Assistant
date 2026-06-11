@@ -1,0 +1,15 @@
+# Core app
+fastapi>=0.110
+uvicorn>=0.29
+pydantic>=2.6
+anthropic>=0.40
+python-dotenv>=1.0
+
+# Retrieval (vector index; BM25 fallback is pure-Python, no deps)
+chromadb>=0.5
+
+# Crawler (only needed to refresh the corpus)
+requests>=2.31
+beautifulsoup4>=4.12
+markdownify>=0.12
+pypdf>=4.0
