@@ -3,11 +3,10 @@
 POST /api/chat  {"message": str, "history": [{"role","content"}...]}
   -> {"answer": str, "sources": [{"n","title","url","heading"}...], "mode": str}
 
-Answers are synthesized by Claude from retrieved passages, with inline [n]
-citations resolved to source URLs. Without an ANTHROPIC_API_KEY the endpoint
-returns an extractive answer (top passages verbatim) so the system still works.
+Answers are synthesized by a local Ollama model from retrieved passages, with
+inline [n] citations resolved to source URLs.
 
-Run:  uvicorn app.main:app --reload --port 8000
+Run:  uvicorn app.main:app --host 127.0.0.1 --port 8000
 """
 from __future__ import annotations
 
@@ -27,19 +26,21 @@ try:  # optional .env support
 except ImportError:
     pass
 
-MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
+MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:latest")
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 TOP_K = int(os.environ.get("RAG_TOP_K", "6"))
 
 app = FastAPI(title="LAMP RAG Chatbot")
 retriever = Retriever()
 
-_client = None
-if os.environ.get("ANTHROPIC_API_KEY"):
-    try:
-        import anthropic
-        _client = anthropic.Anthropic()
-    except Exception:
-        _client = None
+_ollama = None
+try:
+    import ollama as _ollama_lib
+    _ollama = _ollama_lib.Client(host=OLLAMA_HOST)
+    # Verify connectivity — will raise if Ollama isn't reachable
+    _ollama.list()
+except Exception:
+    _ollama = None
 
 SYSTEM_PROMPT = """You are a helpful assistant answering questions about the \
 Learning Actively Mentoring Program (LAMP) at the University of Wyoming, using \
@@ -85,7 +86,7 @@ def index():
 @app.get("/api/status")
 def status():
     return {"chunks": len(retriever.chunks), "retrieval": retriever.mode,
-            "llm": MODEL if _client else "none (extractive fallback)"}
+            "llm": MODEL if _ollama else "none (extractive fallback)"}
 
 
 @app.post("/api/chat")
@@ -100,23 +101,23 @@ def chat(req: ChatRequest):
     sources = [{"n": i + 1, "title": h["title"], "url": h["url"],
                 "heading": h.get("heading", "")} for i, h in enumerate(hits)]
 
-    if _client is None:
+    if _ollama is None:
         top = hits[:3]
-        ans = ["**No ANTHROPIC_API_KEY set — showing the most relevant passages instead "
+        ans = ["**Ollama not available — showing the most relevant passages instead "
                "of a synthesized answer.**", ""]
         for i, h in enumerate(top, 1):
             ans.append(f"[{i}] **{h['title']}**: {h['text'][:600]}…")
         return {"answer": "\n\n".join(ans), "sources": sources[:3], "mode": retriever.mode}
 
-    msgs = [{"role": m["role"], "content": m["content"]}
-            for m in req.history[-6:] if m.get("role") in ("user", "assistant")]
+    msgs = [{"role": "system", "content": SYSTEM_PROMPT}]
+    msgs += [{"role": m["role"], "content": m["content"]}
+             for m in req.history[-6:] if m.get("role") in ("user", "assistant")]
     msgs.append({"role": "user", "content":
                  f"Source passages:\n\n{_passages_block(hits)}\n\n"
                  f"Question: {req.message.strip()}"})
     try:
-        resp = _client.messages.create(model=MODEL, max_tokens=1200,
-                                       system=SYSTEM_PROMPT, messages=msgs)
-        answer = resp.content[0].text
+        resp = _ollama.chat(model=MODEL, messages=msgs)
+        answer = resp.message.content
     except Exception as e:
         return JSONResponse(status_code=502,
                             content={"error": f"LLM call failed: {e}"})

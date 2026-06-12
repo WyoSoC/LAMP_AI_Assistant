@@ -2,7 +2,7 @@
 fastapi>=0.110
 uvicorn>=0.29
 pydantic>=2.6
-anthropic>=0.40
+ollama>=0.3
 python-dotenv>=1.0
 
 # Retrieval (vector index; BM25 fallback is pure-Python, no deps)
